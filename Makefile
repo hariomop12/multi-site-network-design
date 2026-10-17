@@ -5,6 +5,7 @@
 SUDO ?= sudo
 CLAB ?= containerlab
 CLAB_VERSION ?= 0.81.1
+LAB ?= corpnet
 TOPO ?= topology.clab.yml
 
 # Prefer the project virtualenv when it exists, so `make test` just works after
@@ -56,9 +57,22 @@ inspect:
 graph:
 	$(SUDO) $(CLAB) graph -t $(TOPO)
 
-## wait: block until the control plane has converged (~90s)
+## wait: block until OSPF has fully converged (polls, timeout 300s)
 wait:
-	@echo "waiting for OSPF/DHCP convergence..."; sleep 90
+	@echo "waiting for OSPF to converge..."
+	@for attempt in $$(seq 1 60); do \
+		converged=1; \
+		for router in hq-core b1-core b2-core; do \
+			neighbours=$$($(SUDO) docker exec clab-$(LAB)-$$router vtysh -c "show ip ospf neighbor" 2>/dev/null | grep -c "Full" || true); \
+			if [ "$$neighbours" -lt 2 ]; then converged=0; break; fi; \
+		done; \
+		if [ "$$converged" -eq 1 ]; then \
+			echo "OSPF converged after ~$$(((attempt - 1) * 5))s (every router has 2 FULL neighbours)"; \
+			exit 0; \
+		fi; \
+		sleep 5; \
+	done; \
+	echo "error: OSPF did not converge within 300s" >&2; exit 1
 
 ## baseline: 30-point health check of the healthy network
 baseline:

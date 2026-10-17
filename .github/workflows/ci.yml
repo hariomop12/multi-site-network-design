@@ -19,12 +19,15 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
+          # No requirements.txt / pyproject.toml here: the lab needs nothing
+          # from pip at runtime, the tests only need the dev tooling.
+          cache-dependency-path: requirements-dev.txt
 
       - name: Install python tooling
         run: pip install -r requirements-dev.txt
@@ -38,7 +41,7 @@ jobs:
       - name: Deploy the topology
         run: make deploy SUDO=sudo
 
-      - name: Wait for OSPF and DHCP to converge
+      - name: Wait for OSPF to converge
         run: make wait
 
       - name: Show the topology
@@ -60,7 +63,7 @@ jobs:
 
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fault-evidence
           path: artifacts/
@@ -69,4 +72,4 @@ jobs:
 
       - name: Tear the lab down
         if: always()
-        run: make destroy SUDO=sudo
+        run: make destroy SUDO=sudo || true
