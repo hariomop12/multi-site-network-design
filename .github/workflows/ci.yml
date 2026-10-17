@@ -53,12 +53,24 @@ jobs:
       - name: Baseline + fault scenario tests
         run: make test
 
-      - name: Collect container logs on failure
+      - name: Collect diagnostics on failure
         if: failure()
         run: |
           mkdir -p artifacts/logs
           for c in $(docker ps -a --format '{{.Names}}' | grep '^clab-'); do
             docker logs "$c" > "artifacts/logs/$c.log" 2>&1 || true
+          done
+          # The state the failing assertions actually look at, so a failure can
+          # be read straight from the artifact instead of guessed at.
+          for sw in hq-sw1 hq-sw2; do
+            docker exec "clab-corpnet-$sw" bridge link show \
+              > "artifacts/logs/$sw-bridge.txt" 2>&1 || true
+          done
+          for r in hq-core b1-core b2-core; do
+            docker exec "clab-corpnet-$r" vtysh -c 'show ip ospf neighbor' \
+              > "artifacts/logs/$r-ospf-neighbours.txt" 2>&1 || true
+            docker exec "clab-corpnet-$r" vtysh -c 'show ip route' \
+              > "artifacts/logs/$r-routes.txt" 2>&1 || true
           done
 
       - name: Upload evidence

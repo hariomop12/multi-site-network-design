@@ -157,8 +157,10 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 # 2. build the two node images (Alpine host/switch, FRR router)
 make images
 
-# 3. deploy the 19-node topology and wait for convergence
+# 3. deploy the 19-node topology, then block until OSPF has fully converged
+#    (make wait polls, it does not sleep for a fixed guess)
 make deploy
+make wait
 
 # 4. prove the network is healthy (human-readable)
 make baseline
@@ -173,6 +175,7 @@ Useful targets:
 | --- | --- |
 | `make images` | Build `labnode` and `frrnode` |
 | `make deploy` / `make destroy` / `make redeploy` | Manage the lab |
+| `make wait` | Block until every router has two FULL OSPF neighbours |
 | `make inspect` / `make graph` | containerlab topology views |
 | `make baseline` | 30-point health check |
 | `make test` | `pytest` — baseline + faults |
@@ -226,6 +229,36 @@ race.
 
 ---
 
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request, on a stock
+`ubuntu-24.04` runner — no network simulator, no GUI, no pre-baked image:
+
+```text
+checkout → python tooling → install containerlab (pinned)
+         → build labnode + frrnode → containerlab deploy
+         → make wait   (poll until every router has 2 FULL neighbours)
+         → make baseline   (30-point health check)
+         → make test       (baseline + all four fault scenarios)
+         → always: collect container logs, bridge/OSPF dumps, upload artifacts
+         → always: tear the lab down
+```
+
+Two things this pipeline deliberately does *not* do:
+
+* **No fixed `sleep`.** The wait step polls the control plane, so the job is
+  neither flaky nor padded on a slower runner.
+* **No hidden failures.** Teardown is best-effort (`|| true`) so a genuine test
+  failure is what turns the job red, not a `containerlab destroy` with nothing
+  left to destroy.
+
+The evidence the tests write to `artifacts/` (route dumps, traceroutes, lease
+tables, before/after packet rates) is uploaded whether the job passes or fails,
+and on failure the runner also dumps every container log plus the switch bridge
+and router OSPF state.
+
+---
+
 ## Repository layout
 
 ```text
@@ -240,6 +273,7 @@ scripts/baseline.sh        human-readable health check
 docs/design.md             design goals, topology, routing/L2/services design
 docs/addressing.md         complete IP plan and interface map
 docs/runbooks/             one runbook per fault scenario
+.github/workflows/ci.yml   deploy → converge → baseline → faults, with artifacts
 artifacts/                 generated evidence (git-ignored)
 ```
 

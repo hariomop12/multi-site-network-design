@@ -17,13 +17,20 @@ require_lab
 
 echo "Injecting fault: STP disabled on the HQ switches"
 for sw in hq-sw1 hq-sw2; do
-    exec_in "$sw" ip link set br0 type bridge stp_state 0
-    say "$sw: stp_state 0 (both parallel links now forwarding)"
+    # Disable STP, then force every bridge port to forwarding. With STP off
+    # nothing manages port state any more, but a port that was blocking does not
+    # necessarily start forwarding on its own straight away, and waiting for
+    # that timer made the scenario flaky on slower machines.
+    exec_in "$sw" sh -c '
+        ip link set br0 type bridge stp_state 0
+        for port in $(bridge link show | awk "{print \$2}" | cut -d@ -f1 | tr -d ":"); do
+            bridge link set dev "$port" state forwarding
+        done
+    '
+    say "$sw: stp_state 0, all bridge ports forwarding"
 done
 
-# A port that was blocking does not start forwarding the instant STP is turned
-# off, so wait for it. Without this the broadcast frame can be sent while the
-# redundant link is still blocked, and no storm forms.
+# Safety net: confirm the loop really is open before the test sends a broadcast.
 ports_blocked() {
     local sw
     for sw in hq-sw1 hq-sw2; do

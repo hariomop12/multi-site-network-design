@@ -35,7 +35,9 @@ def test_wan_link_failure_reconverges_via_the_other_branch(lab):
     """HQ <-> Branch-1 link down, Branch-1 traffic must reroute through Branch-2."""
     hq_core, b1_core = lab["hq_core"], lab["b1_core"]
 
-    assert route_via(hq_core, "10.20.10.0/24") == "10.0.0.2", "lab is not in its baseline state"
+    assert wait_until(lambda: route_via(hq_core, "10.20.10.0/24") == "10.0.0.2", timeout=30), (
+        "lab is not in its baseline state"
+    )
 
     evidence = [run_script("faults/inject/wan_link_failure.sh")]
     try:
@@ -59,7 +61,11 @@ def test_wan_link_failure_reconverges_via_the_other_branch(lab):
     assert wait_until(lambda: ospf_neighbor_count(hq_core) == 2, timeout=90), (
         "adjacency did not come back after the link was restored"
     )
-    assert route_via(hq_core, "10.20.10.0/24") == "10.0.0.2", "primary path was not reinstalled"
+    # The adjacency can reach FULL a moment before SPF reinstalls the preferred
+    # path, so wait for the RIB rather than assuming it has already moved.
+    assert wait_until(lambda: route_via(hq_core, "10.20.10.0/24") == "10.0.0.2", timeout=90), (
+        f"primary path was not reinstalled, still via {route_via(hq_core, '10.20.10.0/24')}"
+    )
 
 
 # ---------------------------------------------------------------- fault 2 ---
@@ -134,7 +140,9 @@ def test_stp_loop_causes_a_broadcast_storm(lab):
     """Removing STP from a bridged loop turns one frame into a storm."""
     sw1, sw2 = lab["hq_sw1"], lab["hq_sw2"]
 
-    assert count_bridge_states(sw2).get("blocking", 0) >= 1, "STP is not blocking in the baseline"
+    assert wait_until(lambda: count_bridge_states(sw2).get("blocking", 0) >= 1, timeout=60), (
+        "STP is not blocking in the baseline"
+    )
 
     quiet = traffic_rate(sw1, "eth9", seconds=3)
     threshold = max(50.0, quiet * 10)
