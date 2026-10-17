@@ -1,0 +1,72 @@
+name: lab
+
+# The suite talks to a deployed containerlab topology, so CI deploys the lab,
+# waits for convergence, then runs the same commands a human would run locally.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: deploy + baseline + fault scenarios
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install python tooling
+        run: pip install -r requirements-dev.txt
+
+      - name: Install containerlab
+        run: make install-clab SUDO=sudo
+
+      - name: Build node images
+        run: make images
+
+      - name: Deploy the topology
+        run: make deploy SUDO=sudo
+
+      - name: Wait for OSPF and DHCP to converge
+        run: make wait
+
+      - name: Show the topology
+        run: make inspect SUDO=sudo
+
+      - name: Baseline health check
+        run: make baseline
+
+      - name: Baseline + fault scenario tests
+        run: make test
+
+      - name: Collect container logs on failure
+        if: failure()
+        run: |
+          mkdir -p artifacts/logs
+          for c in $(docker ps -a --format '{{.Names}}' | grep '^clab-'); do
+            docker logs "$c" > "artifacts/logs/$c.log" 2>&1 || true
+          done
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fault-evidence
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Tear the lab down
+        if: always()
+        run: make destroy SUDO=sudo

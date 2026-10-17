@@ -1,0 +1,20 @@
+# containerlab runtime artefacts
+clab-*/
+*.clab.yml.bak
+
+# python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# logs / captures produced by the fault scenarios
+artifacts/
+*.pcap
+*.log
+
+# editors
+.vscode/
+.idea/
+*.swp
