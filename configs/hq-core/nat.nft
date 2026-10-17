@@ -1,0 +1,19 @@
+#!/usr/sbin/nft -f
+#
+# NAT overload on the HQ edge router.
+#
+# This replaces the (unavailable) FRR `ip nat inside source ... overload`
+# command. Only traffic leaving towards the ISP is translated, so the WAN
+# transit range 10.0.0.0/22 is never masqueraded and alerts from the branches
+# keep their real source addresses.
+#
+# Inspect it with:   nft list ruleset
+# Inspect flows with: conntrack -L
+
+table ip nat {
+	chain postrouting {
+		type nat hook postrouting priority srcnat; policy accept;
+
+		oifname "eth1" ip saddr != 10.0.0.0/22 masquerade
+	}
+}

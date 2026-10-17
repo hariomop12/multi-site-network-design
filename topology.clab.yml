@@ -1,0 +1,172 @@
+# =============================================================================
+#  Multi-site corporate network - containerlab topology
+#
+#  HQ + Branch-1 + Branch-2, simulated with real FRRouting daemons.
+#  Interface names follow the order in which a node appears in `links`:
+#  the first link becomes eth1, the second eth2, and so on.
+#
+#  Deploy:  containerlab deploy -t topology.clab.yml --reconfigure
+#  Destroy: containerlab destroy -t topology.clab.yml --cleanup
+# =============================================================================
+name: corpnet
+
+mgmt:
+  network: corpnet-mgmt
+  ipv4-subnet: 172.20.20.0/24
+
+topology:
+  kinds:
+    # Hosts, access switches and the public server.
+    linux:
+      image: labnode:latest
+      # Runs after containerlab has wired every link; unblocks the boot hook.
+      exec:
+        - touch /tmp/.lab-interfaces-ready
+    # Routers. The daemons file enables ospfd on top of the always-on
+    # zebra / staticd / mgmtd set.
+    frr:
+      image: frrnode:latest
+      binds:
+        - configs/frr/daemons:/etc/frr/daemons
+        - configs/frr/vtysh.conf:/etc/frr/vtysh.conf
+      exec:
+        - touch /tmp/.lab-interfaces-ready
+
+  nodes:
+    # ---------------------------------------------------------- internet edge
+    isp:
+      kind: frr
+      binds:
+        - configs/isp/frr.conf:/etc/frr/frr.conf
+        - configs/isp/setup.sh:/etc/lab/setup.sh
+
+    pub-srv:
+      kind: linux
+      binds:
+        - configs/hosts/pub-srv.sh:/etc/lab/setup.sh
+
+    # -------------------------------------------------------------------- HQ
+    hq-core:
+      kind: frr
+      binds:
+        - configs/hq-core/frr.conf:/etc/frr/frr.conf
+        - configs/hq-core/setup.sh:/etc/lab/setup.sh
+        - configs/hq-core/nat.nft:/etc/lab/nat.nft:ro
+        - configs/hq-core/dnsmasq.conf:/etc/lab/dnsmasq.conf:ro
+
+    hq-sw1:
+      kind: linux
+      binds:
+        - configs/hq-sw1/setup.sh:/etc/lab/setup.sh
+
+    hq-sw2:
+      kind: linux
+      binds:
+        - configs/hq-sw2/setup.sh:/etc/lab/setup.sh
+
+    hq-users:
+      kind: linux
+      binds:
+        - configs/hosts/dhcp-client.sh:/etc/lab/setup.sh
+
+    hq-users2:
+      kind: linux
+      binds:
+        - configs/hosts/dhcp-client.sh:/etc/lab/setup.sh
+
+    hq-srv1:
+      kind: linux
+      binds:
+        - configs/hosts/hq-srv1.sh:/etc/lab/setup.sh
+
+    hq-nms:
+      kind: linux
+      binds:
+        - configs/hosts/hq-nms.sh:/etc/lab/setup.sh
+
+    # Four voice handsets sharing a scope that this lab sizes on purpose.
+    hq-phone1:
+      kind: linux
+      binds:
+        - configs/hosts/dhcp-client.sh:/etc/lab/setup.sh
+
+    hq-phone2:
+      kind: linux
+      binds:
+        - configs/hosts/dhcp-client.sh:/etc/lab/setup.sh
+
+    hq-phone3:
+      kind: linux
+      binds:
+        - configs/hosts/dhcp-client.sh:/etc/lab/setup.sh
+
+    hq-phone4:
+      kind: linux
+      binds:
+        - configs/hosts/dhcp-client.sh:/etc/lab/setup.sh
+
+    # -------------------------------------------------------------- Branch-1
+    b1-core:
+      kind: frr
+      binds:
+        - configs/b1-core/frr.conf:/etc/frr/frr.conf
+        - configs/b1-core/setup.sh:/etc/lab/setup.sh
+        - configs/b1-core/dnsmasq.conf:/etc/lab/dnsmasq.conf:ro
+
+    b1-sw1:
+      kind: linux
+      binds:
+        - configs/branch-switch/setup.sh:/etc/lab/setup.sh
+
+    b1-users:
+      kind: linux
+      binds:
+        - configs/hosts/dhcp-client.sh:/etc/lab/setup.sh
+
+    # -------------------------------------------------------------- Branch-2
+    b2-core:
+      kind: frr
+      binds:
+        - configs/b2-core/frr.conf:/etc/frr/frr.conf
+        - configs/b2-core/setup.sh:/etc/lab/setup.sh
+        - configs/b2-core/dnsmasq.conf:/etc/lab/dnsmasq.conf:ro
+
+    b2-sw1:
+      kind: linux
+      binds:
+        - configs/branch-switch/setup.sh:/etc/lab/setup.sh
+
+    b2-users:
+      kind: linux
+      binds:
+        - configs/hosts/dhcp-client.sh:/etc/lab/setup.sh
+
+  links:
+    # --- WAN / internet edge -------------------------------------------------
+    - endpoints: ["isp:eth1", "hq-core:eth1"]
+    - endpoints: ["hq-core:eth2", "hq-sw1:eth1"]
+    - endpoints: ["hq-core:eth3", "b1-core:eth1"]
+    - endpoints: ["hq-core:eth4", "b2-core:eth1"]
+    - endpoints: ["b1-core:eth2", "b2-core:eth2"]
+    - endpoints: ["b2-core:eth3", "b2-sw1:eth1"]
+    - endpoints: ["b1-core:eth3", "b1-sw1:eth1"]
+    - endpoints: ["isp:eth2", "pub-srv:eth1"]
+
+    # --- HQ access layer -----------------------------------------------------
+    - endpoints: ["hq-sw1:eth2", "hq-users:eth1"]
+    - endpoints: ["hq-sw1:eth3", "hq-srv1:eth1"]
+    - endpoints: ["hq-sw1:eth4", "hq-nms:eth1"]
+    - endpoints: ["hq-sw1:eth5", "hq-phone1:eth1"]
+    - endpoints: ["hq-sw1:eth6", "hq-phone2:eth1"]
+    - endpoints: ["hq-sw1:eth7", "hq-phone3:eth1"]
+    - endpoints: ["hq-sw1:eth8", "hq-phone4:eth1"]
+
+    # Two parallel links between the HQ switches: a real layer-2 loop.
+    - endpoints: ["hq-sw1:eth9", "hq-sw2:eth1"]
+    - endpoints: ["hq-sw1:eth10", "hq-sw2:eth2"]
+
+    - endpoints: ["hq-sw2:eth3", "hq-users2:eth1"]
+
+    # --- Branch access layer -------------------------------------------------
+    - endpoints: ["b1-sw1:eth2", "b1-users:eth1"]
+    - endpoints: ["b2-sw1:eth2", "b2-users:eth1"]
