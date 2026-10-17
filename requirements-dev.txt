@@ -1,0 +1,6 @@
+# Test/dev tooling only.
+#
+# The lab itself needs nothing from pip: the tests talk to the deployed
+# containers through the docker CLI.
+pytest>=8.0
+PyYAML>=6.0
