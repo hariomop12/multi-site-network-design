@@ -1,6 +1,6 @@
 # Multi-Site Corporate Network Design with Fault Simulation
 
-A three-site enterprise network — **HQ + Branch-1 + Branch-2** — built with
+A three-site enterprise network  **HQ + Branch-1 + Branch-2** built with
 **containerlab** and real **FRRouting** routers, plus four production-style
 faults that are injected, detected, remediated and verified by an automated
 `pytest` suite.
